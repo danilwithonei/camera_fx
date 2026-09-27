@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Camera FX",
+  "version": "1.4",
+  "description": "Эффекты для веб-камеры в браузере: Ч/Б, линза, PS1 3D, цензура и пикселизация лица, картинка на глаза, letterbox, зелёный экран.",
+  "permissions": ["storage", "unlimitedStorage"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "host_permissions": ["<all_urls>"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "camera-fx@danil-dev.local",
+      "strict_min_version": "128.0"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/*",
+        "models/*",
+        "models3d/*",
+        "models3d/tv/*",
+        "models3d/one_hand/*",
+        "image.png",
+        "green_screens/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

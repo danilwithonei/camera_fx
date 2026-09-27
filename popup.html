@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 230px; padding: 10px; font-family: sans-serif; }
+    .container { display: flex; flex-direction: column; gap: 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; }
+    .controls { display: none; flex-direction: column; gap: 8px; border-top: 1px solid #eee; padding-top: 8px; }
+    .controls.active { display: flex; }
+    input[type="range"] { width: 110px; }
+    label { font-size: 11px; color: #666; }
+    select { padding: 4px; border-radius: 4px; width: 130px; }
+    
+    .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider:before { transform: translateX(20px); }
+    #gsPad { position: relative; width: 210px; height: 120px; margin: 0 auto; border: 2px solid #999; border-radius: 4px; background: #e8e8e8; cursor: crosshair; user-select: none; touch-action: none; }
+    #gsDot { position: absolute; width: 20px; height: 20px; background: #2196F3; border: 2px solid white; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; transform: translate(-50%,-50%); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row">
+      <span>Эффект:</span>
+      <label class="switch">
+        <input type="checkbox" id="effectEnabled" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <span>Режим:</span>
+      <select id="effectMode">
+        <option value="grayscale">Ч/Б</option>
+        <option value="lens">Линза</option>
+        <option value="ps1">PS1 3D</option>
+        <option value="censorship">Цензура глаз</option>
+        <option value="pixelate">Пиксельное лицо</option>
+        <option value="image_overlay">Картинка на глаза</option>
+        <option value="letterbox">Letterbox</option>
+        <option value="greenscreen">Зелёный экран</option>
+      </select>
+    </div>
+    
+    <div id="lensControls" class="controls" data-modes="lens">
+      <div class="row">
+        <label>Радиус:</label>
+        <input type="range" id="lensRadius" min="10" max="300" value="100">
+      </div>
+      <div class="row">
+        <label>Сила:</label>
+        <input type="range" id="lensAlpha" min="-200" max="200" value="50">
+      </div>
+    </div>
+
+    <div id="ps1Controls" class="controls" data-modes="ps1">
+      <div class="row">
+        <span>Модель:</span>
+        <select id="ps1Model">
+          <option value="tv">Телевизор</option>
+          <option value="one_hand">Автомат</option>
+          <option value="head">Голова</option>
+          <option value="car">Машина</option>
+          <option value="wm">Стиралка</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Дальность:</label>
+        <input type="range" id="ps1Distance" min="2" max="10" step="0.5" value="5.5">
+      </div>
+      <div class="row">
+        <label>Амплитуда:</label>
+        <input type="range" id="ps1Amplitude" min="0" max="3" step="0.1" value="0.8">
+      </div>
+      <div class="row">
+        <label>Скорость:</label>
+        <input type="range" id="ps1Speed" min="0" max="0.1" step="0.005" value="0.02">
+      </div>
+      <div class="row">
+        <span>Рандомное движение:</span>
+        <label class="switch">
+          <input type="checkbox" id="ps1Random">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div id="pixelateControls" class="controls" data-modes="pixelate">
+      <div class="row">
+        <label>Пиксели:</label>
+        <input type="range" id="pixelSize" min="5" max="50" value="12">
+      </div>
+      <div class="row">
+        <label>Область:</label>
+        <input type="range" id="pixelPadding" min="0" max="20" value="4">
+      </div>
+    </div>
+
+    <div id="censorshipControls" class="controls" data-modes="censorship image_overlay">
+      <div id="imageUploadRow" class="row" style="display: none; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px dashed #eee;">
+        <label>Своя картинка:</label>
+        <input type="file" id="imageUpload" accept="image/*" style="width: 100px; font-size: 10px;">
+      </div>
+      <div class="row">
+        <label>Ширина:</label>
+        <input type="range" id="censorshipWidth" min="10" max="1000" value="150">
+      </div>
+      <div class="row">
+        <label>Высота:</label>
+        <input type="range" id="censorshipHeight" min="10" max="1000" value="45">
+      </div>
+      <div class="row">
+        <label>Смещение X:</label>
+        <input type="range" id="offsetX" min="-100" max="100" value="0">
+      </div>
+      <div class="row">
+        <label>Смещение Y:</label>
+        <input type="range" id="offsetY" min="-100" max="100" value="0">
+      </div>
+    </div>
+    <div id="letterboxControls" class="controls" data-modes="letterbox">
+      <div class="row">
+        <span>Соотношение:</span>
+        <select id="letterboxRatio">
+          <option value="2.39">2.39:1 (Anamorphic)</option>
+          <option value="2.35">2.35:1 (CinemaScope)</option>
+          <option value="2.00">2.00:1 (Univisium)</option>
+          <option value="1.85">1.85:1 (Academy Flat)</option>
+          <option value="1.78">16:9</option>
+          <option value="1.33">4:3</option>
+        </select>
+      </div>
+      <div class="row">
+        <span>Ч/Б режим:</span>
+        <label class="switch">
+          <input type="checkbox" id="letterboxBW">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div id="greenscreenControls" class="controls" data-modes="greenscreen">
+      <div style="text-align:center;">
+        <div id="gsPad">
+          <div id="gsDot"></div>
+        </div>
+      </div>
+      <div class="row">
+        <label>Размер:</label>
+        <input type="range" id="gsSize" min="10" max="300" value="50">
+      </div>
+      <div class="row">
+        <label>Поворот:</label>
+        <input type="range" id="gsRotation" min="0" max="360" value="0">
+      </div>
+      <div class="row">
+        <label>Точность:</label>
+        <input type="range" id="gsTolerance" min="10" max="120" value="50">
+      </div>
+      <div class="row">
+        <label>Свое видео:</label>
+        <input type="file" id="gsVideoUpload" accept="video/*" style="width: 100px; font-size: 10px;">
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
