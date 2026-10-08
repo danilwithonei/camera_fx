@@ -1,8 +1,11 @@
-# Игнорировать локальные файлы ОС
+# OS files
+.DS_Store
 Thumbs.db
 desktop.ini
-.DS_Store
 
-# Игнорировать временные файлы
+# Temporary files
 *.log
 *.tmp
+
+# Raw photos/videos the README screenshots and GIFs are made from
+docs/source/
