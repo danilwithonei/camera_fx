@@ -129,3 +129,28 @@ $('gsVideoUpload').addEventListener('change', (e) => {
     readFileAsDataURL(e.target.files[0], MAX_VIDEO_BYTES, 'Видео слишком большое! Выберите файл меньше 50 МБ',
         dataUrl => save({ gsVideoUrl: dataUrl }));
 });
+
+// Firefox lets users withhold or revoke host access; without it nothing gets injected.
+const ALL_SITES = { origins: ['<all_urls>'] };
+chrome.permissions.contains(ALL_SITES, (granted) => {
+    $('permissionWarning').style.display = granted ? 'none' : 'block';
+});
+$('grantPermission').addEventListener('click', () => {
+    chrome.permissions.request(ALL_SITES, (granted) => {
+        if (granted) $('permissionWarning').style.display = 'none';
+    });
+});
+
+// Firefox closes the popup when a file picker opens, so the upload is lost.
+// There the file inputs open these same settings in a tab, where picking works.
+const isFirefox = navigator.userAgent.includes('Firefox');
+const inTab = new URLSearchParams(location.search).has('tab');
+if (isFirefox && !inTab) {
+    document.querySelectorAll('input[type="file"]').forEach(input => {
+        input.addEventListener('click', (e) => {
+            e.preventDefault();
+            chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?tab') });
+            window.close();
+        });
+    });
+}

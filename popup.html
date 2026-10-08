@@ -19,11 +19,17 @@
     input:checked + .slider { background-color: #2196F3; }
     input:checked + .slider:before { transform: translateX(20px); }
     #gsPad { position: relative; width: 210px; height: 120px; margin: 0 auto; border: 2px solid #999; border-radius: 4px; background: #e8e8e8; cursor: crosshair; user-select: none; touch-action: none; }
+    #permissionWarning { display: none; padding: 8px; border-radius: 4px; background: #fff3cd; color: #664d03; font-size: 12px; }
+    #permissionWarning button { margin-top: 6px; width: 100%; }
     #gsDot { position: absolute; width: 20px; height: 20px; background: #2196F3; border: 2px solid white; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; transform: translate(-50%,-50%); }
   </style>
 </head>
 <body>
   <div class="container">
+    <div id="permissionWarning">
+      Нет доступа к сайтам, поэтому эффекты не работают.
+      <button id="grantPermission">Разрешить доступ</button>
+    </div>
     <div class="row">
       <span>Эффект:</span>
       <label class="switch">

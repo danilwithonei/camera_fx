@@ -76,13 +76,37 @@
         return threePromise;
     }
 
-    function updateOverlayImage() {
-        const src = customImage || (extUrl && `${extUrl}image.png`);
-        if (src && overlayImage.src !== src) overlayImage.src = src;
+    // Firefox treats moz-extension:// media as cross-origin to the page: such an image
+    // taints the canvas and such a video can't be uploaded to WebGL. A blob: URL made
+    // by the page is same-origin, so bundled media is loaded through one.
+    const blobUrls = {};
+    function extensionBlobUrl(path) {
+        if (!blobUrls[path]) {
+            blobUrls[path] = fetch(extUrl + path)
+                .then(response => response.blob())
+                .then(blob => URL.createObjectURL(blob))
+                .catch(e => {
+                    console.error('[CameraFX] Failed to load', path, e);
+                    delete blobUrls[path];
+                    return null;
+                });
+        }
+        return blobUrls[path];
     }
 
-    function updateGsVideo() {
-        const src = customGsVideo || (extUrl && `${extUrl}green_screens/1.webm`);
+    // Tokens drop results of an older call that finished after a newer one.
+    let overlayToken = 0;
+    async function updateOverlayImage() {
+        const token = ++overlayToken;
+        const src = customImage || (extUrl && await extensionBlobUrl('image.png'));
+        if (token === overlayToken && src && overlayImage.src !== src) overlayImage.src = src;
+    }
+
+    let gsToken = 0;
+    async function updateGsVideo() {
+        const token = ++gsToken;
+        const src = customGsVideo || (extUrl && await extensionBlobUrl('green_screens/1.webm'));
+        if (token !== gsToken) return;
         if (src && gsVideo.src !== src) gsVideo.src = src;
         const active = settings && settings.effectEnabled && settings.effectMode === 'greenscreen';
         if (active && gsVideo.src) {
@@ -168,7 +192,9 @@
         void main() {
             vec4 c = texture2D(u_image, v_uv);
             float m = max(c.r, c.b);
-            float a = (c.g > m && c.g - m > u_threshold) ? 0.0 : 1.0;
+            float a = (c.g > m && c.g - m > u_threshold) ? 0.0 : c.a;
+            // Despill: neutralize the green fringe left on edges blended with the screen.
+            c.g = min(c.g, m);
             gl_FragColor = vec4(c.rgb * a, a);
         }`;
 
