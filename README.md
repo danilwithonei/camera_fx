@@ -38,14 +38,16 @@ The extension is not published in the stores yet, so it is installed from source
 
 ### Download
 
-Models and libraries are stored in [Git LFS](https://git-lfs.com), so `git lfs` must be installed:
+**Easiest:** download `camera_fx-vX.Y.zip` from the [latest release](https://github.com/danilwithonei/camera_fx/releases/latest) and unzip it. You get a `camera_fx` folder with everything the extension needs.
+
+> Don't use the green "Code → Download ZIP" button: that archive has text placeholders instead of the models, and the extension won't work with them.
+
+**From source:** models and libraries are stored in [Git LFS](https://git-lfs.com), so `git lfs` must be installed:
 
 ```bash
 git lfs install
 git clone https://github.com/danilwithonei/camera_fx.git
 ```
-
-> GitHub's "Download ZIP" button puts text placeholders instead of the models into the archive by default, and the extension won't work with them. Use `git clone`.
 
 ### Google Chrome and other Chromium browsers (Edge, Brave, Opera, Yandex Browser)
 
@@ -58,7 +60,7 @@ Version 111 or newer is required.
 5. Open a site with video calls. If the camera was already on there, reload the tab and turn the camera on again.
 6. Click the Camera FX icon and choose an effect. Effects switch on the fly, no need to restart the camera.
 
-The extension stays installed after a browser restart. After updating the files (`git pull`), click the reload button on the extension's card at `chrome://extensions/` and reload the site's tab.
+The extension stays installed after a browser restart. To update, replace the folder with a newer release (or run `git pull`), then click the reload button on the extension's card at `chrome://extensions/` and reload the site's tab.
 
 ### Firefox
 
@@ -91,3 +93,4 @@ In Firefox, uploading your own image or video opens the settings in a tab, becau
 | `green_screens/` | Default green screen video |
 | `image.png` | Default image for "Image over eyes" |
 | `docs/` | Screenshots and GIFs for this README |
+| `.github/workflows/release.yml` | Builds the release zip when a `v*` tag is pushed |

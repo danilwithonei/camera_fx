@@ -1,0 +1,53 @@
+name: Release
+
+# Push a tag matching the manifest version (e.g. v1.6) to publish a release
+# with a ready-to-install zip of the extension.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Check that the tag matches manifest.json
+        run: |
+          version=$(jq -r .version manifest.json)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "manifest.json version is $version, but the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Build zip
+        run: |
+          mkdir -p dist/camera_fx
+          cp -r manifest.json inject.js content.js popup.html popup.js image.png \
+            lib models models3d green_screens dist/camera_fx/
+          # Without real LFS files the extension silently breaks.
+          if grep -rlI '^version https://git-lfs' dist/camera_fx; then
+            echo "Git LFS pointers found instead of files"
+            exit 1
+          fi
+          cd dist && zip -qr "camera_fx-$GITHUB_REF_NAME.zip" camera_fx
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/camera_fx-${{ github.ref_name }}.zip
+          body: |
+            ## Install
+
+            Download **camera_fx-${{ github.ref_name }}.zip** below and unzip it.
+
+            **Chrome / Edge / Brave / Opera** (111+): open `chrome://extensions/`, turn on **Developer mode**, click **Load unpacked** and select the unzipped `camera_fx` folder.
+
+            **Firefox** (128+): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and select `manifest.json` in the unzipped folder. A temporary add-on is removed when Firefox closes.
+
+            Then reload the tab with your video call and pick an effect in the extension popup.
+          generate_release_notes: true
