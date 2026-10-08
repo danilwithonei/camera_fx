@@ -11,7 +11,7 @@
     if (!mediaDevices || !mediaDevices.getUserMedia) return;
     const originalGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
 
-    const FACE_MODES = ['lens', 'censorship', 'image_overlay', 'pixelate'];
+    const FACE_MODES = ['lens', 'censorship', 'image_overlay', 'pixelate', 'laser_eyes'];
     const DETECT_INTERVAL_MS = 50;
     const PS1_WIDTH = 320;
     const PS1_HEIGHT = 240;
@@ -233,6 +233,58 @@
         };
     }
 
+    // ---------- Laser eyes ----------
+
+    const FIRE_SPRITE_STEPS = 8;
+    const MAX_FIRE_PARTICLES = 600;
+    let fireSprites = null;
+
+    // Soft round sprites from yellow-white (young flame) to dark red (dying ember).
+    function getFireSprites() {
+        if (!fireSprites) {
+            fireSprites = [];
+            for (let i = 0; i < FIRE_SPRITE_STEPS; i++) {
+                const k = i / (FIRE_SPRITE_STEPS - 1);
+                const sprite = document.createElement('canvas');
+                sprite.width = sprite.height = 64;
+                const sctx = sprite.getContext('2d');
+                const g = sctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+                const hue = 50 * (1 - k);
+                g.addColorStop(0, `hsla(${hue}, 100%, ${85 - 45 * k}%, 1)`);
+                g.addColorStop(0.4, `hsla(${hue}, 100%, ${60 - 30 * k}%, 0.6)`);
+                g.addColorStop(1, `hsla(${hue}, 100%, 30%, 0)`);
+                sctx.fillStyle = g;
+                sctx.fillRect(0, 0, 64, 64);
+                fireSprites.push(sprite);
+            }
+        }
+        return fireSprites;
+    }
+
+    const BEAM_LAYERS = [
+        { scale: 2.4, rgb: '255, 30, 0', alpha: 0.35, blur: 2 },
+        { scale: 1.3, rgb: '255, 110, 0', alpha: 0.8, blur: 1 },
+        { scale: 0.55, rgb: '255, 225, 120', alpha: 1, blur: 0 },
+        { scale: 0.2, rgb: '255, 255, 255', alpha: 1, blur: 0 }
+    ];
+
+    // Landmarks of each eye: corners and lid centers.
+    const LASER_EYES = [
+        { outer: 33, inner: 133, upper: 159, lower: 145 },
+        { outer: 263, inner: 362, upper: 386, lower: 374 }
+    ];
+    // Eye aspect ratio (lid gap / eye width) thresholds; the gap between them
+    // keeps a half-closed eye from flickering the laser on and off.
+    const EYE_CLOSED_RATIO = 0.15;
+    const EYE_OPEN_RATIO = 0.2;
+
+    const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const normalize3 = v => {
+        const len = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / len, v[1] / len, v[2] / len];
+    };
+
     // ---------- PS1 3D renderer ----------
 
     async function fetchAsDataURL(url) {
@@ -437,6 +489,11 @@
         let lastDetection = 0;
         const pixelCanvas = document.createElement('canvas');
         const pixelCtx = pixelCanvas.getContext('2d');
+        let fireParticles = [];
+        let laserForward = null; // smoothed 3D head direction
+        let laserLastTime = 0;
+        const laserEyeOpen = [true, true];
+        const laserEyePower = [1, 1]; // 0..1, fades beams in and out
 
         function detectFace() {
             const now = performance.now();
@@ -509,6 +566,156 @@
             ctx.restore();
         }
 
+        function drawLaserBeam(ex, ey, dx, dy, length, width, flicker) {
+            const nx = -dy, ny = dx;
+            const endX = ex + dx * length;
+            const endY = ey + dy * length;
+            for (const layer of BEAM_LAYERS) {
+                const start = width * layer.scale * flicker / 2;
+                const end = start * 2.5; // beam spreads with distance
+                const g = ctx.createLinearGradient(ex, ey, endX, endY);
+                g.addColorStop(0, `rgba(${layer.rgb}, ${layer.alpha})`);
+                g.addColorStop(0.7, `rgba(${layer.rgb}, ${layer.alpha * 0.6})`);
+                g.addColorStop(1, `rgba(${layer.rgb}, 0)`);
+                ctx.fillStyle = g;
+                ctx.shadowColor = `rgba(${layer.rgb}, 1)`;
+                ctx.shadowBlur = width * layer.blur;
+                ctx.beginPath();
+                ctx.moveTo(ex + nx * start, ey + ny * start);
+                ctx.lineTo(endX + nx * end, endY + ny * end);
+                ctx.lineTo(endX - nx * end, endY - ny * end);
+                ctx.lineTo(ex - nx * start, ey - ny * start);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        function drawEyeFlare(ex, ey, width, angle, flicker) {
+            const r = width * 3 * flicker;
+            const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+            g.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            g.addColorStop(0.2, 'rgba(255, 220, 110, 0.9)');
+            g.addColorStop(0.5, 'rgba(255, 90, 0, 0.4)');
+            g.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = g;
+            ctx.save();
+            ctx.translate(ex, ey);
+            ctx.fillRect(-r, -r, r * 2, r * 2);
+            // Anamorphic streak along the eye line.
+            ctx.rotate(angle);
+            ctx.scale(4, 0.15);
+            ctx.fillRect(-r, -r, r * 2, r * 2);
+            ctx.restore();
+        }
+
+        function spawnFire(ex, ey, dx, dy, length, width, dt, power) {
+            const count = Math.round(settings.laserFire * 6 * dt * power * (0.5 + Math.random()));
+            for (let i = 0; i < count && fireParticles.length < MAX_FIRE_PARTICLES; i++) {
+                const t = Math.pow(Math.random(), 1.5) * length * 0.8;
+                const side = (Math.random() - 0.5) * width;
+                const speed = length * (0.3 + Math.random() * 0.5);
+                const spread = (Math.random() - 0.5) * width * 4;
+                fireParticles.push({
+                    x: ex + dx * t - dy * side,
+                    y: ey + dy * t + dx * side,
+                    vx: dx * speed - dy * spread,
+                    vy: dy * speed + dx * spread,
+                    size: width * (0.8 + Math.random() * 1.2) * (1 + t / length * 2),
+                    age: 0,
+                    life: 0.25 + Math.random() * 0.45
+                });
+            }
+        }
+
+        function drawFire(dt) {
+            const sprites = getFireSprites();
+            fireParticles = fireParticles.filter(p => (p.age += dt) < p.life);
+            for (const p of fireParticles) {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy -= p.size * 6 * dt; // flames rise
+                const k = p.age / p.life;
+                const size = p.size * (1 + k);
+                ctx.globalAlpha = (1 - k) * 0.9;
+                ctx.drawImage(sprites[Math.min(FIRE_SPRITE_STEPS - 1, Math.floor(k * FIRE_SPRITE_STEPS))],
+                    p.x - size / 2, p.y - size / 2, size, size);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawLaserEyes(w, h, landmarks) {
+            ctx.drawImage(video, 0, 0, w, h);
+            const now = performance.now();
+            const dt = laserLastTime ? Math.min(0.1, (now - laserLastTime) / 1000) : 0;
+            laserLastTime = now;
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            if (landmarks) {
+                const pt = i => [landmarks[i].x * w, landmarks[i].y * h, landmarks[i].z * w];
+                const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+                const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+                let eyes = LASER_EYES.map(e => mid(pt(e.outer), pt(e.inner)));
+                // 468/473 are iris centers (absent in older models); match each to its eye.
+                if (landmarks.length > 473) {
+                    const irises = [pt(468), pt(473)];
+                    if (dist(irises[0], eyes[0]) > dist(irises[0], eyes[1])) irises.reverse();
+                    eyes = irises;
+                }
+                LASER_EYES.forEach((e, i) => {
+                    const ratio = dist(pt(e.upper), pt(e.lower)) / (dist(pt(e.outer), pt(e.inner)) || 1);
+                    if (ratio < EYE_CLOSED_RATIO) laserEyeOpen[i] = false;
+                    else if (ratio > EYE_OPEN_RATIO) laserEyeOpen[i] = true;
+                    const target = laserEyeOpen[i] ? 1 : 0;
+                    laserEyePower[i] += (target - laserEyePower[i]) * Math.min(1, dt * 15);
+                });
+                const right = sub3(pt(263), pt(33));
+                const up = sub3(pt(10), pt(152));
+                const eyeDist = Math.hypot(right[0], right[1]);
+                const eyeAngle = Math.atan2(right[1], right[0]);
+
+                let dx, dy, reach;
+                if (settings.laserFollowHead) {
+                    const forward = normalize3(cross3(right, up));
+                    laserForward = laserForward
+                        ? normalize3(laserForward.map((v, i) => v * 0.7 + forward[i] * 0.3))
+                        : forward;
+                    const planar = Math.hypot(laserForward[0], laserForward[1]);
+                    dx = planar > 1e-3 ? laserForward[0] / planar : 0;
+                    dy = planar > 1e-3 ? laserForward[1] / planar : 1;
+                    // Facing the camera, the beams point at the viewer and look short.
+                    reach = Math.min(1, Math.max(0.15, planar * 2.5));
+                } else {
+                    const a = eyeAngle + settings.laserAngle * Math.PI / 180;
+                    dx = Math.cos(a);
+                    dy = Math.sin(a);
+                    reach = 1;
+                }
+
+                const length = Math.hypot(w, h) * settings.laserLength / 100 * reach;
+                const width = eyeDist * settings.laserWidth / 100;
+                const flicker = 1 + 0.12 * Math.sin(now / 37) * Math.sin(now / 23);
+                const activeEyes = eyes
+                    .map(([ex, ey], i) => ({ ex, ey, power: laserEyePower[i] }))
+                    .filter(e => e.power > 0.01);
+                for (const { ex, ey, power } of activeEyes) {
+                    ctx.globalAlpha = power;
+                    drawLaserBeam(ex, ey, dx, dy, length * power, width, flicker);
+                    spawnFire(ex, ey, dx, dy, length, width, dt, power);
+                }
+                drawFire(dt);
+                for (const { ex, ey, power } of activeEyes) {
+                    ctx.globalAlpha = power;
+                    drawEyeFlare(ex, ey, width, eyeAngle, flicker);
+                }
+                ctx.globalAlpha = 1;
+            } else {
+                drawFire(dt);
+            }
+            ctx.restore();
+        }
+
         function drawPixelatedFace(w, h, landmarks) {
             ctx.drawImage(video, 0, 0, w, h);
             if (!landmarks) return;
@@ -568,6 +775,7 @@
                 const landmarks = detectFace();
                 if (mode === 'lens') return drawLens(w, h, landmarks);
                 if (mode === 'pixelate') return drawPixelatedFace(w, h, landmarks);
+                if (mode === 'laser_eyes') return drawLaserEyes(w, h, landmarks);
                 return drawEyeOverlay(w, h, landmarks);
             }
             // Effect still loading or unknown mode: pass the camera through.

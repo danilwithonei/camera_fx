@@ -4,9 +4,10 @@ const NUMBER_INPUTS = [
     'ps1Distance', 'ps1Amplitude', 'ps1Speed',
     'pixelSize', 'pixelPadding',
     'censorshipWidth', 'censorshipHeight', 'offsetX', 'offsetY',
-    'gsSize', 'gsRotation', 'gsTolerance'
+    'gsSize', 'gsRotation', 'gsTolerance',
+    'laserLength', 'laserWidth', 'laserFire', 'laserAngle'
 ];
-const CHECKBOXES = ['effectEnabled', 'ps1Random', 'letterboxBW'];
+const CHECKBOXES = ['effectEnabled', 'ps1Random', 'letterboxBW', 'laserFollowHead'];
 const SELECTS = ['effectMode', 'ps1Model', 'letterboxRatio'];
 
 // Keys left behind by the removed "hand overlay" effect.
@@ -23,6 +24,12 @@ function updateUI(mode) {
         panel.classList.toggle('active', panel.dataset.modes.split(' ').includes(mode));
     });
     $('imageUploadRow').style.display = mode === 'image_overlay' ? 'flex' : 'none';
+    updateLaserAngleRow();
+}
+
+// The fixed angle only matters when beams don't follow the head.
+function updateLaserAngleRow() {
+    $('laserAngleRow').style.display = $('laserFollowHead').checked ? 'none' : 'flex';
 }
 
 function save(values) {
@@ -63,6 +70,7 @@ for (const key of SELECTS) {
     $(key).addEventListener('change', () => save({ [key]: $(key).value }));
 }
 modeSelect.addEventListener('change', () => updateUI(modeSelect.value));
+$('laserFollowHead').addEventListener('change', updateLaserAngleRow);
 $('gsSize').addEventListener('input', () => updateGsDotSize(parseFloat($('gsSize').value)));
 
 // Green screen position pad: offsets are in video pixels, ±500.

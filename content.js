@@ -23,7 +23,12 @@ const DEFAULTS = {
     gsOffsetY: 0,
     gsSize: 50,
     gsRotation: 0,
-    gsTolerance: 50
+    gsTolerance: 50,
+    laserLength: 100,
+    laserWidth: 25,
+    laserFire: 60,
+    laserFollowHead: true,
+    laserAngle: 60
 };
 
 // Large data URLs: sent only initially and when they change.

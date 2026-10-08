@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Camera FX",
-  "version": "1.4",
-  "description": "Эффекты для веб-камеры в браузере: Ч/Б, линза, PS1 3D, цензура и пикселизация лица, картинка на глаза, letterbox, зелёный экран.",
+  "version": "1.5",
+  "description": "Эффекты для веб-камеры в браузере: Ч/Б, линза, PS1 3D, цензура и пикселизация лица, картинка на глаза, letterbox, зелёный экран, лазеры из глаз.",
   "permissions": ["storage", "unlimitedStorage"],
   "action": {
     "default_popup": "popup.html"

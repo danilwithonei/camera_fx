@@ -42,6 +42,7 @@
         <option value="image_overlay">Картинка на глаза</option>
         <option value="letterbox">Letterbox</option>
         <option value="greenscreen">Зелёный экран</option>
+        <option value="laser_eyes">Лазеры из глаз</option>
       </select>
     </div>
     
@@ -163,6 +164,31 @@
       <div class="row">
         <label>Свое видео:</label>
         <input type="file" id="gsVideoUpload" accept="video/*" style="width: 100px; font-size: 10px;">
+      </div>
+    </div>
+    <div id="laserControls" class="controls" data-modes="laser_eyes">
+      <div class="row">
+        <label>Длина:</label>
+        <input type="range" id="laserLength" min="10" max="200" value="100">
+      </div>
+      <div class="row">
+        <label>Толщина:</label>
+        <input type="range" id="laserWidth" min="5" max="80" value="25">
+      </div>
+      <div class="row">
+        <label>Огонь:</label>
+        <input type="range" id="laserFire" min="0" max="100" value="60">
+      </div>
+      <div class="row">
+        <span>За поворотом головы:</span>
+        <label class="switch">
+          <input type="checkbox" id="laserFollowHead" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="laserAngleRow" class="row" style="display: none;">
+        <label>Угол:</label>
+        <input type="range" id="laserAngle" min="-180" max="180" value="60">
       </div>
     </div>
   </div>
