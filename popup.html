@@ -21,6 +21,8 @@
     #gsPad { position: relative; width: 210px; height: 120px; margin: 0 auto; border: 2px solid #999; border-radius: 4px; background: #e8e8e8; cursor: crosshair; user-select: none; touch-action: none; }
     #permissionWarning { display: none; padding: 8px; border-radius: 4px; background: #fff3cd; color: #664d03; font-size: 12px; }
     #permissionWarning button { margin-top: 6px; width: 100%; }
+    #faceSwapStatus { font-size: 11px; color: #666; }
+    #faceSwapPreview { display: none; max-width: 100%; max-height: 120px; margin: 0 auto; border-radius: 4px; }
     #gsDot { position: absolute; width: 20px; height: 20px; background: #2196F3; border: 2px solid white; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; transform: translate(-50%,-50%); }
   </style>
 </head>
@@ -49,6 +51,7 @@
         <option value="letterbox">Letterbox</option>
         <option value="greenscreen">Зелёный экран</option>
         <option value="laser_eyes">Лазеры из глаз</option>
+        <option value="face_swap">Замена лица</option>
       </select>
     </div>
     
@@ -195,6 +198,33 @@
       <div id="laserAngleRow" class="row" style="display: none;">
         <label>Угол:</label>
         <input type="range" id="laserAngle" min="-180" max="180" value="60">
+      </div>
+    </div>
+
+    <div id="faceSwapControls" class="controls" data-modes="face_swap">
+      <div class="row">
+        <label>Фото лица:</label>
+        <input type="file" id="faceSwapUpload" accept="image/*" style="width: 100px; font-size: 10px;">
+      </div>
+      <div id="faceSwapStatus">Загрузите фото, где лицо видно анфас.</div>
+      <img id="faceSwapPreview" alt="Фото для замены лица">
+      <div class="row">
+        <label>Непрозрачность:</label>
+        <input type="range" id="faceSwapOpacity" min="10" max="100" value="100">
+      </div>
+      <div class="row">
+        <span>Мягкие края:</span>
+        <label class="switch">
+          <input type="checkbox" id="faceSwapFeather" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="row">
+        <span>Свои глаза и рот:</span>
+        <label class="switch">
+          <input type="checkbox" id="faceSwapOwnFeatures" checked>
+          <span class="slider"></span>
+        </label>
       </div>
     </div>
   </div>

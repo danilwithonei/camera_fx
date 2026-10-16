@@ -28,11 +28,14 @@ const DEFAULTS = {
     laserWidth: 25,
     laserFire: 60,
     laserFollowHead: true,
-    laserAngle: 60
+    laserAngle: 60,
+    faceSwapOpacity: 100,
+    faceSwapFeather: true,
+    faceSwapOwnFeatures: true
 };
 
 // Large data URLs: sent only initially and when they change.
-const MEDIA_KEYS = ['customImage', 'gsVideoUrl'];
+const MEDIA_KEYS = ['customImage', 'gsVideoUrl', 'faceSwapTarget'];
 
 function sendState(includeMedia) {
     const keys = Object.keys(DEFAULTS).concat(includeMedia ? MEDIA_KEYS : []);

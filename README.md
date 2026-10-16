@@ -30,7 +30,7 @@ Pick an effect in the extension popup; each one has its own settings there. The 
 | ![Letterbox](docs/effects/letterbox.jpg) | ![Green screen](docs/effects/greenscreen.jpg) |
 | **Letterbox** (`Letterbox`). Cinematic black bars with a choice of aspect ratio (2.39:1, 2.35:1, 16:9 and more), optionally in black and white. | **Green screen** (`Зелёный экран`). A green screen video over the camera with the background keyed out. Upload your own video, then move, scale and rotate it. |
 | ![Laser eyes](docs/effects/laser_eyes.jpg) | |
-| **Laser eyes** (`Лазеры из глаз`). Fiery beams with sparks shooting from the pupils, either where the head is turned or at a fixed angle. Closing an eye turns its laser off. | |
+| **Laser eyes** (`Лазеры из глаз`). Fiery beams with sparks shooting from the pupils, either where the head is turned or at a fixed angle. Closing an eye turns its laser off. | **Face swap** (`Замена лица`). Upload a photo with a face, and it is stretched over yours along MediaPipe's face mesh, following your head and expressions. Soft edges and your own eyes and mouth showing through are optional. |
 
 ## Installation
 
@@ -78,7 +78,7 @@ In Firefox, uploading your own image or video opens the settings in a tab, becau
 
 - Reload the site's tab: the extension hooks into the page when it loads.
 - Check that the effect switch (`Эффект`) at the top of the popup is on.
-- Face effects (lens, censorship, pixelation, image, lasers) need 1–2 seconds to load the model the first time.
+- Face effects (lens, censorship, pixelation, image, lasers, face swap) need 1–2 seconds to load the model the first time.
 
 ## How it works
 

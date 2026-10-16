@@ -5,9 +5,10 @@ const NUMBER_INPUTS = [
     'pixelSize', 'pixelPadding',
     'censorshipWidth', 'censorshipHeight', 'offsetX', 'offsetY',
     'gsSize', 'gsRotation', 'gsTolerance',
-    'laserLength', 'laserWidth', 'laserFire', 'laserAngle'
+    'laserLength', 'laserWidth', 'laserFire', 'laserAngle',
+    'faceSwapOpacity'
 ];
-const CHECKBOXES = ['effectEnabled', 'ps1Random', 'letterboxBW', 'laserFollowHead'];
+const CHECKBOXES = ['effectEnabled', 'ps1Random', 'letterboxBW', 'laserFollowHead', 'faceSwapFeather', 'faceSwapOwnFeatures'];
 const SELECTS = ['effectMode', 'ps1Model', 'letterboxRatio'];
 
 // Keys left behind by the removed "hand overlay" effect.
@@ -123,6 +124,67 @@ function readFileAsDataURL(file, maxBytes, tooBigMessage, onLoad) {
 $('imageUpload').addEventListener('change', (e) => {
     readFileAsDataURL(e.target.files[0], MAX_IMAGE_BYTES, 'Картинка слишком большая! Выберите файл меньше 1.5 МБ',
         dataUrl => save({ customImage: dataUrl }));
+});
+
+// Face swap photo: the face is detected here, once, and its landmarks are stored
+// with the photo, so the page only has to track the camera face.
+const MAX_FACE_PHOTO_SIDE = 1024;
+let photoLandmarkerPromise = null;
+
+function getPhotoLandmarker() {
+    if (!photoLandmarkerPromise) {
+        photoLandmarkerPromise = (async () => {
+            const vision = await import(chrome.runtime.getURL('lib/vision_bundle.mjs'));
+            const fileset = await vision.FilesetResolver.forVisionTasks(chrome.runtime.getURL('lib'));
+            return vision.FaceLandmarker.createFromOptions(fileset, {
+                baseOptions: { modelAssetPath: chrome.runtime.getURL('models/face_landmarker.task') },
+                runningMode: 'IMAGE',
+                numFaces: 1
+            });
+        })();
+        photoLandmarkerPromise.catch(() => { photoLandmarkerPromise = null; });
+    }
+    return photoLandmarkerPromise;
+}
+
+function showFacePreview(dataUrl) {
+    $('faceSwapPreview').src = dataUrl;
+    $('faceSwapPreview').style.display = 'block';
+    $('faceSwapStatus').textContent = '';
+}
+
+async function loadFacePhoto(file) {
+    const status = $('faceSwapStatus');
+    status.textContent = 'Ищу лицо на фото…';
+    try {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, MAX_FACE_PHOTO_SIDE / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+        const face = (await getPhotoLandmarker()).detect(canvas).faceLandmarks[0];
+        if (!face) {
+            status.textContent = 'Лицо не найдено, выберите другое фото.';
+            return;
+        }
+        const image = canvas.toDataURL('image/jpeg', 0.9);
+        const landmarks = face.slice(0, 468).map(p => [+p.x.toFixed(5), +p.y.toFixed(5)]);
+        save({ faceSwapTarget: { image, landmarks } });
+        showFacePreview(image);
+    } catch (e) {
+        console.error(e);
+        status.textContent = `Не удалось обработать фото: ${e.message}`;
+    }
+}
+
+$('faceSwapUpload').addEventListener('change', (e) => {
+    if (e.target.files[0]) loadFacePhoto(e.target.files[0]);
+});
+
+chrome.storage.local.get('faceSwapTarget', ({ faceSwapTarget }) => {
+    if (faceSwapTarget) showFacePreview(faceSwapTarget.image);
 });
 
 $('gsVideoUpload').addEventListener('change', (e) => {

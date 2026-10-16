@@ -2,32 +2,50 @@
   "manifest_version": 3,
   "name": "Camera FX",
   "version": "1.6",
-  "description": "Эффекты для веб-камеры в браузере: Ч/Б, линза, PS1 3D, цензура и пикселизация лица, картинка на глаза, letterbox, зелёный экран, лазеры из глаз.",
-  "permissions": ["storage", "unlimitedStorage"],
+  "description": "Эффекты для веб-камеры в браузере: Ч/Б, линза, PS1 3D, цензура и пикселизация лица, картинка на глаза, letterbox, зелёный экран, лазеры из глаз, замена лица.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
   "action": {
     "default_popup": "popup.html"
   },
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "camera-fx@danil-dev.local",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     }
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["inject.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "inject.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
@@ -43,7 +61,9 @@
         "image.png",
         "green_screens/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

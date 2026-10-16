@@ -11,8 +11,10 @@
     if (!mediaDevices || !mediaDevices.getUserMedia) return;
     const originalGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
 
-    const FACE_MODES = ['lens', 'censorship', 'image_overlay', 'pixelate', 'laser_eyes'];
+    const FACE_MODES = ['lens', 'censorship', 'image_overlay', 'pixelate', 'laser_eyes', 'face_swap'];
     const DETECT_INTERVAL_MS = 50;
+    // The swapped face must stick to the real one, so it is tracked at camera rate.
+    const FACE_SWAP_DETECT_INTERVAL_MS = 30;
     const PS1_WIDTH = 320;
     const PS1_HEIGHT = 240;
 
@@ -52,6 +54,7 @@
                     runningMode: 'VIDEO',
                     numFaces: 1
                 });
+                faceMeshTriangles = trianglesFromTessellation(vision.FaceLandmarker.FACE_LANDMARKS_TESSELATION);
             })().catch(e => {
                 console.error('[CameraFX] Failed to load FaceLandmarker', e);
                 faceLandmarkerPromise = null;
@@ -137,6 +140,7 @@
         // Media is only sent when it changes, so moving a slider doesn't reload it.
         if ('customImage' in data) customImage = data.customImage;
         if ('gsVideoUrl' in data) customGsVideo = data.gsVideoUrl;
+        if ('faceSwapTarget' in data) updateFaceSwapTarget(data.faceSwapTarget);
         settings = data.settings;
         updateOverlayImage();
         onSettingsChanged();
@@ -198,11 +202,7 @@
             gl_FragColor = vec4(c.rgb * a, a);
         }`;
 
-    function createGLFilter(fragmentSource) {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
-        if (!gl) return null;
-
+    function createProgram(gl, vertexSource, fragmentSource) {
         const compile = (type, source) => {
             const shader = gl.createShader(type);
             gl.shaderSource(shader, source);
@@ -210,7 +210,7 @@
             return shader;
         };
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX_SHADER));
+        gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexSource));
         gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentSource));
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -218,18 +218,35 @@
             return null;
         }
         gl.useProgram(program);
+        return program;
+    }
+
+    function createLinearTexture(gl) {
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+
+    function loseContext(gl) {
+        const ext = gl.getExtension('WEBGL_lose_context');
+        if (ext) ext.loseContext();
+    }
+
+    function createGLFilter(fragmentSource) {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
+        if (!gl) return null;
+        const program = createProgram(gl, VERTEX_SHADER, fragmentSource);
+        if (!program) return null;
 
         gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
         const positionLocation = gl.getAttribLocation(program, 'a_position');
         gl.enableVertexAttribArray(positionLocation);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        createLinearTexture(gl);
 
         const uniformLocations = {};
         const uniform = name => {
@@ -252,10 +269,7 @@
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
                 return canvas;
             },
-            dispose() {
-                const ext = gl.getExtension('WEBGL_lose_context');
-                if (ext) ext.loseContext();
-            }
+            dispose: () => loseContext(gl)
         };
     }
 
@@ -310,6 +324,152 @@
         const len = Math.hypot(v[0], v[1], v[2]) || 1;
         return [v[0] / len, v[1] / len, v[2] / len];
     };
+
+    // ---------- Face swap ----------
+
+    const FACE_MESH_POINTS = 468; // the 10 iris points aren't part of the mesh
+    // Eye contours and the inner lip line. With "own eyes and mouth" on, mesh triangles
+    // spanning them are skipped so the real eyes and mouth show through the photo.
+    const FACE_SWAP_HOLES = [
+        [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+        [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466],
+        [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 191, 80, 81, 82, 13, 312, 311, 310, 415]
+    ].map(contour => new Set(contour));
+    // Face outline: its vertices get zero alpha, which fades out the photo's edges.
+    const FACE_OVAL = new Set([10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378,
+        400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]);
+
+    // MediaPipe lists the face mesh as edges, three per triangle.
+    let faceMeshTriangles = null;
+    function trianglesFromTessellation(edges) {
+        const triangles = [];
+        for (let i = 0; i + 2 < edges.length; i += 3) {
+            triangles.push([edges[i].start, edges[i + 1].start, edges[i + 2].start]);
+        }
+        return triangles;
+    }
+
+    // Face photo and its landmarks, which the popup detects once on upload.
+    let faceSwapTarget = null; // { image, landmarks: [[x, y], ...], version }
+    let faceSwapVersion = 0;
+    function updateFaceSwapTarget(target) {
+        const version = ++faceSwapVersion;
+        if (!target) {
+            faceSwapTarget = null;
+            return;
+        }
+        const image = new Image();
+        image.onload = () => {
+            if (version === faceSwapVersion) faceSwapTarget = { image, landmarks: target.landmarks, version };
+        };
+        image.src = target.image;
+    }
+
+    // z is the landmark depth (smaller is closer). With the depth test it keeps the
+    // far cheek, which folds over in 2D when the head turns, behind the near side.
+    const FACE_SWAP_VERTEX_SHADER = `
+        attribute vec3 a_position;
+        attribute vec2 a_uv;
+        attribute float a_alpha;
+        varying vec2 v_uv;
+        varying float v_alpha;
+        void main() {
+            v_uv = a_uv;
+            v_alpha = a_alpha;
+            gl_Position = vec4(a_position.x * 2.0 - 1.0, 1.0 - a_position.y * 2.0, clamp(a_position.z * 4.0, -1.0, 1.0), 1.0);
+        }`;
+
+    const FACE_SWAP_FRAGMENT_SHADER = `
+        precision mediump float;
+        uniform sampler2D u_image;
+        uniform float u_opacity;
+        varying vec2 v_uv;
+        varying float v_alpha;
+        void main() {
+            float a = v_alpha * u_opacity;
+            gl_FragColor = vec4(texture2D(u_image, v_uv).rgb * a, a);
+        }`;
+
+    // Maps each triangle of the photo's face mesh onto the same triangle of the
+    // camera face: a piecewise affine warp done by the GPU.
+    function createFaceSwapRenderer() {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl', { premultipliedAlpha: true, preserveDrawingBuffer: true, depth: true });
+        if (!gl) return null;
+        const program = createProgram(gl, FACE_SWAP_VERTEX_SHADER, FACE_SWAP_FRAGMENT_SHADER);
+        if (!program) return null;
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+        const attribute = (name, size) => {
+            const buffer = gl.createBuffer();
+            const location = gl.getAttribLocation(program, name);
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.enableVertexAttribArray(location);
+            gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+            return data => {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+            };
+        };
+        const setPositions = attribute('a_position', 3);
+        const setUvs = attribute('a_uv', 2);
+        const setAlphas = attribute('a_alpha', 1);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+        createLinearTexture(gl);
+        const opacityLocation = gl.getUniformLocation(program, 'u_opacity');
+
+        const positions = new Float32Array(FACE_MESH_POINTS * 3);
+        let targetVersion = -1;
+        let meshKey = null;
+        let indexCount = 0;
+
+        return {
+            render(landmarks, width, height) {
+                if (canvas.width !== width || canvas.height !== height) {
+                    canvas.width = width;
+                    canvas.height = height;
+                }
+                gl.viewport(0, 0, width, height);
+
+                const target = faceSwapTarget;
+                if (target.version !== targetVersion) {
+                    targetVersion = target.version;
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, target.image);
+                    setUvs(new Float32Array(target.landmarks.flat()));
+                }
+
+                const key = `${settings.faceSwapOwnFeatures}|${settings.faceSwapFeather}`;
+                if (key !== meshKey) {
+                    meshKey = key;
+                    const triangles = settings.faceSwapOwnFeatures
+                        ? faceMeshTriangles.filter(t => !FACE_SWAP_HOLES.some(hole => t.every(i => hole.has(i))))
+                        : faceMeshTriangles;
+                    indexCount = triangles.length * 3;
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangles.flat()), gl.STATIC_DRAW);
+                    const alphas = new Float32Array(FACE_MESH_POINTS);
+                    for (let i = 0; i < FACE_MESH_POINTS; i++) {
+                        alphas[i] = settings.faceSwapFeather && FACE_OVAL.has(i) ? 0 : 1;
+                    }
+                    setAlphas(alphas);
+                }
+
+                for (let i = 0; i < FACE_MESH_POINTS; i++) {
+                    positions[i * 3] = landmarks[i].x;
+                    positions[i * 3 + 1] = landmarks[i].y;
+                    positions[i * 3 + 2] = landmarks[i].z;
+                }
+                setPositions(positions);
+                gl.uniform1f(opacityLocation, settings.faceSwapOpacity / 100);
+                gl.clearColor(0, 0, 0, 0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+                return canvas;
+            },
+            dispose: () => loseContext(gl)
+        };
+    }
 
     // ---------- PS1 3D renderer ----------
 
@@ -520,10 +680,11 @@
         let laserLastTime = 0;
         const laserEyeOpen = [true, true];
         const laserEyePower = [1, 1]; // 0..1, fades beams in and out
+        let faceSwap = null;
 
-        function detectFace() {
+        function detectFace(interval) {
             const now = performance.now();
-            if (now - lastDetection > DETECT_INTERVAL_MS) {
+            if (now - lastDetection > interval) {
                 // detectForVideo needs strictly increasing timestamps across all streams.
                 lastFaceTimestamp = Math.max(now, lastFaceTimestamp + 1);
                 faceResults = faceLandmarker.detectForVideo(video, lastFaceTimestamp);
@@ -742,6 +903,13 @@
             ctx.restore();
         }
 
+        function drawFaceSwap(w, h, landmarks) {
+            ctx.drawImage(video, 0, 0, w, h);
+            if (!landmarks || !faceSwapTarget || !faceMeshTriangles) return;
+            if (!faceSwap) faceSwap = createFaceSwapRenderer();
+            if (faceSwap) ctx.drawImage(faceSwap.render(landmarks, w, h), 0, 0);
+        }
+
         function drawPixelatedFace(w, h, landmarks) {
             ctx.drawImage(video, 0, 0, w, h);
             if (!landmarks) return;
@@ -798,10 +966,11 @@
                 return ps1.render(ctx, w, h);
             }
             if (FACE_MODES.includes(mode) && faceLandmarker) {
-                const landmarks = detectFace();
+                const landmarks = detectFace(mode === 'face_swap' ? FACE_SWAP_DETECT_INTERVAL_MS : DETECT_INTERVAL_MS);
                 if (mode === 'lens') return drawLens(w, h, landmarks);
                 if (mode === 'pixelate') return drawPixelatedFace(w, h, landmarks);
                 if (mode === 'laser_eyes') return drawLaserEyes(w, h, landmarks);
+                if (mode === 'face_swap') return drawFaceSwap(w, h, landmarks);
                 return drawEyeOverlay(w, h, landmarks);
             }
             // Effect still loading or unknown mode: pass the camera through.
@@ -841,6 +1010,7 @@
             video.srcObject = null;
             Object.values(filters).forEach(f => f && f.dispose());
             if (ps1) ps1.dispose();
+            if (faceSwap) faceSwap.dispose();
         }
 
         // Stopping the processed track must release the real camera too,
